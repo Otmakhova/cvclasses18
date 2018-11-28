@@ -83,6 +83,38 @@ class corner_detector_fast : public cv::Feature2D
     {
         return "FAST_Binary";
     }
+
+	void copyVector()
+    {
+        for (auto it = circle_points.begin(); it != circle_points.end(); it++)
+            cyclic_buffer.push_back(*it);
+
+        for (auto it = circle_points.begin(); it != circle_points.begin() + 11; it++)
+            cyclic_buffer.push_back(*it);
+    }
+
+    int getNumPoint()
+    {
+        return num_point;
+    }
+
+    bool pointOnImage(const cv::Mat& image, const cv::Point2f& point);
+    int twoPointsTest(const cv::Mat& image, const cv::Point2f& point1, const cv::Point2f& point2, const int& num);
+    void binaryTest(const cv::Mat& image, const cv::Point2f& keypoint, int* descriptor);
+    int threshold; 
+    int num_point; 
+	private:
+    //
+    static const int S = 15;
+	static const int desc_length = 8; // 32 * 8 = 256
+    static const int all_length = desc_length * 32; // 2561    2   3   4  5  6  7  8  9  10 11 12 13 14  15  16
+    int offset_i[16] = {-3, -3, -2, -1, 0, 1, 2, 3, 3, 3, 2, 1, 0, -1, -2, -3};
+    int offset_j[16] = {0, 1, 2, 3, 3, 3, 2, 1, 0, -1, -2, -3, -3, -3, -2, -1};
+    cv::Point2f test_points1[all_length];
+    cv::Point2f test_points2[all_length];
+    std::vector<int> circle_points;
+    std::vector<int> cyclic_buffer;
+    cv::RNG rng;
 };
 } // namespace cvlib
 

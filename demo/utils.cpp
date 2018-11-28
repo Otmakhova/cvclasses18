@@ -72,4 +72,19 @@ void put_fps_text(cv::Mat& image, fps_counter& fps, cv::Scalar color /*= (255, 0
 
     cv::putText(image, ss.str(), textOrgPoint, txtFont, fontScale, color, thickness, 8, false);
 }
+
+void put_number_of_keypoints(cv::Mat& image, const int& num, const cv::Scalar& color)
+{
+    const auto txtFont = CV_FONT_HERSHEY_SIMPLEX;
+    const auto fontScale = 0.5;
+    const auto thickness = 2;
+    static const cv::Size textSize = cv::getTextSize("points: 19", txtFont, fontScale, thickness, nullptr);
+    static const cv::Point textOrgPoint = {5, 20};
+
+    std::stringstream ss;
+
+    ss << "points: " << num;
+
+    cv::putText(image, ss.str(), textOrgPoint, txtFont, fontScale, color, thickness, 8, false);
+}
 } // namespace utils

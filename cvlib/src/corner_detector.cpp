@@ -16,20 +16,9 @@ cv::Ptr<corner_detector_fast> corner_detector_fast::create()
     return cv::makePtr<corner_detector_fast>();
 }
 
-corner_detector_fast::corner_detector_fast()
-{
-    double sigma = 1.0 / 25.0 * S * S;
-    for (int i = 0; i < all_length; i++)
-    {
-        test_points1[i] = cv::Point2f(rng.gaussian(sigma), rng.gaussian(sigma));
-        test_points2[i] = cv::Point2f(rng.gaussian(sigma), rng.gaussian(sigma));
-    }
-}
-
 void corner_detector_fast::detect(cv::InputArray image, CV_OUT std::vector<cv::KeyPoint>& keypoints, cv::InputArray /*mask = cv::noArray()*/)
 {
     keypoints.clear();
-    // \todo implement FAST with minimal LOCs(lines of code), but keep code readable.
     num_point = 0;
     cv::Size image_size = image.size();
     cv::Mat imag = image.getMat();
@@ -78,48 +67,151 @@ void corner_detector_fast::detect(cv::InputArray image, CV_OUT std::vector<cv::K
         }
 }
 
-bool corner_detector_fast::pointOnImage(const cv::Mat& image, const cv::Point2f& point)
+corner_detector_fast::corner_detector_fast()
 {
-    if (point.x > 0.0 && point.x < image.rows && point.y > 0.0 && point.y < image.cols)
-        return true;
-    return false;
+    m_testAreaSize = 31;
+    m_testPointsNum = 256;
+    m_descriptorBytesNum = m_testPointsNum / 8;
+    m_sigma = m_testAreaSize / 5.0;
+
+    generateTestPoints();
 }
 
-int corner_detector_fast::twoPointsTest(const cv::Mat& image, const cv::Point2f& point1, const cv::Point2f& point2, const int& num)
+void corner_detector_fast::generateTestPoints()
 {
-    if (pointOnImage(image, point1) && pointOnImage(image, point2) && image.at<uchar>(point1) < image.at<uchar>(point2))
+    cv::RNG rng;
+    cv::Point2i point1, point2;
+
+    for (int i = 0; i < m_testPointsNum; i++)
     {
-        return 1 << num;
-    }
-    return 0;
+        point1.x = cvRound(rng.gaussian(m_sigma));
+        point1.y = cvRound(rng.gaussian(m_sigma));
+        point2.x = cvRound(rng.gaussian(m_sigma));
+        point2.y = cvRound(rng.gaussian(m_sigma));
 
+        m_testPoints.push_back(std::make_pair(point1, point2));
+    }
 }
-void corner_detector_fast::binaryTest(const cv::Mat& image, const cv::Point2f& keypoint, int* descriptor)
+
+void corner_detector_fast::calcDescriptor(const cv::Point2i& keypoint, cv::Mat& descriptor)
 {
-    for (int i = 0; i < all_length; i++)
+    cv::Point2i point1, point2;
+    bool testResult;
+
+    for (int byteNum = 0; byteNum < m_descriptorBytesNum; byteNum++)
     {
-        descriptor[i / 32] += twoPointsTest(image, keypoint + test_points1[i], keypoint + test_points2[i], i % 32);
+        descriptor.at<uchar>(byteNum) = 0;
+        for (int bitNum = 0; bitNum < 8; bitNum++)
+        {
+            point1 = keypoint + m_testPoints[byteNum * 8 + bitNum].first;
+            point2 = keypoint + m_testPoints[byteNum * 8 + bitNum].second;
+
+            testResult = m_imageForDescriptor.at<uchar>(point1) < m_imageForDescriptor.at<uchar>(point2);
+            descriptor.at<uchar>(byteNum) |= (testResult << bitNum);
+        }
     }
 }
-void corner_detector_fast::compute(cv::InputArray input, std::vector<cv::KeyPoint>& keypoints, cv::OutputArray descriptors)
-{
-    // \todo implement any binary descriptor
-    cv::Mat image;
-    cv::GaussianBlur(input.getMat(), image, cv::Size(9, 9), 2.0);
 
+void corner_detector_fast::compute(cv::InputArray image, std::vector<cv::KeyPoint>& keypoints, cv::OutputArray descriptors)
+{
+    if (image.empty())
+        return;
+    else if (image.channels() == 1)
+        image.copyTo(m_imageForDescriptor);
+    else if (image.channels() == 3)
+        cv::cvtColor(image, m_imageForDescriptor, cv::COLOR_BGR2GRAY);
+
+    cv::GaussianBlur(m_imageForDescriptor, m_imageForDescriptor, cv::Size(9, 9), 2.0, 2.0, cv::BORDER_REPLICATE);
+
+    cv::copyMakeBorder(m_imageForDescriptor, m_imageForDescriptor, m_testAreaSize, m_testAreaSize, m_testAreaSize, m_testAreaSize, cv::BORDER_REPLICATE);
+
+    cv::Mat descriptorsMat(keypoints.size(), m_descriptorBytesNum, CV_8U, cv::Scalar(0));
+
+    for (int i = 0; i < keypoints.size(); i++)
+        calcDescriptor(cv::Point2i(keypoints[i].pt) + cv::Point2i(m_testAreaSize, m_testAreaSize), descriptorsMat.row(i));
+
+    descriptors.assign(descriptorsMat);
+}
+
+/*void corner_detector_fast::compute(cv::InputArray image, std::vector<cv::KeyPoint>& keypoints, cv::OutputArray descriptors)
+{
+    const int desc_length = 15 + 3;
     descriptors.create(static_cast<int>(keypoints.size()), desc_length, CV_32S);
-    cv::Mat desc_mat = descriptors.getMat();
 
-    int* desc_ptr = desc_mat.ptr<int>();
+    auto desc_mat = descriptors.getMat();
+    desc_mat.setTo(0);
 
-    const int keypoints_num = keypoints.size();
-    int shift = 0;
-    for (int i = 0; i < keypoints_num; i++)
+    cv::Mat image_mat = image.getMat();
+    if (image_mat.channels() == 3)
+        cv::cvtColor(image_mat, image_mat, cv::COLOR_BGR2GRAY);
+
+    int* ptr = reinterpret_cast<int*>(desc_mat.ptr());
+
+    for (const auto& pt : keypoints)
     {
-        shift = i * desc_length;
-        binaryTest(image, keypoints[i].pt, &desc_ptr[shift]);
+        int x = (int)pt.pt.x;
+        int y = (int)pt.pt.y;
+
+        int directions[3];
+        for (auto j = 1; j < 4; j++)
+        {
+            int radius_area = j;
+            cv::Mat region = image_mat(cv::Range(y - radius_area, y + radius_area + 1), cv::Range(x - radius_area, x + radius_area + 1));
+
+            double min, max;
+            cv::minMaxLoc(region, &min, &max);
+
+            cv::Mat mmean, mstd;
+            cv::meanStdDev(region, mmean, mstd);
+            float mean = (float)mmean.at<double>(0);
+            float std = (float)mstd.at<double>(0);
+
+            std::vector<int> square;
+            square.push_back((int)region.at<unsigned char>(0, 0));
+            square.push_back((int)region.at<unsigned char>(0, radius_area));
+            square.push_back((int)region.at<unsigned char>(0, 2 * radius_area));
+            square.push_back((int)region.at<unsigned char>(radius_area, 2 * radius_area));
+            square.push_back((int)region.at<unsigned char>(2 * radius_area, 2 * radius_area));
+            square.push_back((int)region.at<unsigned char>(2 * radius_area, radius_area));
+            square.push_back((int)region.at<unsigned char>(2 * radius_area, 0));
+            square.push_back((int)region.at<unsigned char>(radius_area, 0));
+
+            int main_diff = 0;
+            int center = (int)region.at<unsigned char>(radius_area, radius_area);
+
+            for (auto i = 0; i < 8; i++)
+            {
+                int diff = std::abs(center - square.at(i));
+                if (main_diff < diff)
+                {
+                    main_diff = diff;
+                    directions[j - 1] = 1000 * i;
+                }
+            }
+
+            *ptr = (directions[j - 1]);
+            ptr++;
+
+            *ptr = int(mean / max * 1e4);
+            ptr++;
+            *ptr = int(std / max * 1e4);
+            ptr++;
+            *ptr = (int)max;
+            ptr++;
+            *ptr = (int)min;
+            ptr++;
+
+            // íàõîäèì îñíîâíûå ìîìåíòû è HuMoments
+            cv::Moments mom = cv::moments(region);
+            double hu[7];
+            cv::HuMoments(mom, hu);
+            *ptr = int(hu[0] * 100000);
+            ptr++;
+            square.clear();
+        }
     }
-}
+
+}*/
 
 void corner_detector_fast::detectAndCompute(cv::InputArray image, cv::InputArray, std::vector<cv::KeyPoint>& keypoints, cv::OutputArray descriptors, bool /*= false*/)
 {

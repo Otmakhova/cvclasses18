@@ -57,7 +57,7 @@ double fps_counter::process_new_frame()
     return accum_.add_new_value(diff);
 }
 
-void put_fps_text(cv::Mat& image, fps_counter& fps, cv::Scalar color /*= (255, 0, 0)*/)
+void put_fps_text(cv::Mat& image, fps_counter& fps, cv::Scalar color/* = (255, 0, 0)*/)
 {
     const auto txtFont = CV_FONT_HERSHEY_SIMPLEX;
     const auto fontScale = 0.5;

@@ -7,6 +7,8 @@
 #include <cvlib.hpp>
 #include <opencv2/opencv.hpp>
 
+#include "utils.hpp"
+
 int demo_motion_segmentation(int argc, char* argv[])
 {
     const int filename = 0;
@@ -28,6 +30,7 @@ int demo_motion_segmentation(int argc, char* argv[])
 
     cv::Mat frame;
     cv::Mat frame_mseg;
+    utils::fps_counter fps;
     while (cv::waitKey(30) != 27) // ESC
     {
         cap >> frame;
@@ -40,6 +43,7 @@ int demo_motion_segmentation(int argc, char* argv[])
         {
             mseg.setThreshold(threshold);
             mseg.setAlpha(alpha);
+            utils::put_fps_text(frame, fps);
             cv::imshow(main_wnd, frame);
             cv::cvtColor(frame, frame, cv::COLOR_BGR2GRAY);
             mseg.apply(frame, frame_mseg,0);

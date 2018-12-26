@@ -43,7 +43,7 @@ class motion_segmentation : public cv::BackgroundSubtractor
         backgroundImage.assign(bg_model_);
     }
 
-	void setThreshold(int tr)
+    void setThreshold(int tr)
     {
         threshold = tr;
     }
@@ -67,7 +67,9 @@ class corner_detector_fast : public cv::Feature2D
     public:
     /// \brief Fabrique method for creating FAST detector
     static cv::Ptr<corner_detector_fast> create();
-
+    
+	corner_detector_fast();
+ 
     /// \see Feature2d::detect
     virtual void detect(cv::InputArray image, CV_OUT std::vector<cv::KeyPoint>& keypoints, cv::InputArray mask = cv::noArray()) override;
 
@@ -84,7 +86,7 @@ class corner_detector_fast : public cv::Feature2D
         return "FAST_Binary";
     }
 
-	void copyVector()
+    void copyVector()
     {
         for (auto it = circle_points.begin(); it != circle_points.end(); it++)
             cyclic_buffer.push_back(*it);
@@ -93,20 +95,22 @@ class corner_detector_fast : public cv::Feature2D
             cyclic_buffer.push_back(*it);
     }
 
-    int getNumPoint()
+    void setVarThreshold(int th)
     {
-        return num_point;
+        threshold = th;
     }
 
-    bool pointOnImage(const cv::Mat& image, const cv::Point2f& point);
-    int twoPointsTest(const cv::Mat& image, const cv::Point2f& point1, const cv::Point2f& point2, const int& num);
-    void binaryTest(const cv::Mat& image, const cv::Point2f& keypoint, int* descriptor);
-    int threshold; 
-    int num_point; 
-	private:
+    //bool pointOnImage(const cv::Mat& image, const cv::Point2f& point);
+    //int twoPointsTest(const cv::Mat& image, const cv::Point2f& point1, const cv::Point2f& point2, const int& num);
+    //void binaryTest(const cv::Mat& image, const cv::Point2f& keypoint, int* descriptor);
+    
+    int num_point;
+
+    private:
     //
-    static const int S = 15;
-	static const int desc_length = 8; // 32 * 8 = 256
+
+	static const int S = 15;
+    static const int desc_length = 8; // 32 * 8 = 256
     static const int all_length = desc_length * 32; // 2561    2   3   4  5  6  7  8  9  10 11 12 13 14  15  16
     int offset_i[16] = {-3, -3, -2, -1, 0, 1, 2, 3, 3, 3, 2, 1, 0, -1, -2, -3};
     int offset_j[16] = {0, 1, 2, 3, 3, 3, 2, 1, 0, -1, -2, -3, -3, -3, -2, -1};
@@ -115,7 +119,70 @@ class corner_detector_fast : public cv::Feature2D
     std::vector<int> circle_points;
     std::vector<int> cyclic_buffer;
     cv::RNG rng;
+    int threshold;
+
+    void calcDescriptor(const cv::Point2i& keypoint, cv::Mat& descriptor);
+    void generateTestPoints();
+    cv::Mat m_imageForDescriptor;
+    int m_testAreaSize;
+    int m_testPointsNum;
+    int m_descriptorBytesNum;
+    double m_sigma;
+    std::vector<std::pair<cv::Point2i, cv::Point2i>> m_testPoints;
+    
 };
+/// \brief Descriptor matched based on ratio of SSD
+class descriptor_matcher : public cv::DescriptorMatcher
+{
+    public:
+    /// \brief ctor
+    descriptor_matcher(float ratio = 1.5) : ratio_(ratio)
+    {
+    }
+
+    /// \brief setup ratio threshold for SSD filtering
+    void set_ratio(float r)
+    {
+        ratio_ = r;
+    }
+
+    protected:
+    /// \see cv::DescriptorMatcher::knnMatchImpl
+    virtual void knnMatchImpl(cv::InputArray queryDescriptors, std::vector<std::vector<cv::DMatch>>& matches, int k,
+                              cv::InputArrayOfArrays masks = cv::noArray(), bool compactResult = false) override;
+
+    /// \see cv::DescriptorMatcher::radiusMatchImpl
+    virtual void radiusMatchImpl(cv::InputArray queryDescriptors, std::vector<std::vector<cv::DMatch>>& matches, float maxDistance,
+                                 cv::InputArrayOfArrays masks = cv::noArray(), bool compactResult = false) override;
+
+    /// \see cv::DescriptorMatcher::isMaskSupported
+    virtual bool isMaskSupported() const override
+    {
+        return false;
+    }
+
+    /// \see cv::DescriptorMatcher::isMaskSupported
+    virtual cv::Ptr<cv::DescriptorMatcher> clone(bool emptyTrainData = false) const override
+    {
+        cv::Ptr<cv::DescriptorMatcher> copy = new descriptor_matcher(*this);
+        if (emptyTrainData)
+        {
+            copy->clear();
+        }
+        return copy;
+    }
+
+    private:
+    float ratio_;
+};
+
+/// \brief Stitcher for merging images into big one
+class Stitcher
+{
+    /// \todo design and implement
+};
+} // namespace cvlib
+
 } // namespace cvlib
 
 #endif // __CVLIB_HPP__

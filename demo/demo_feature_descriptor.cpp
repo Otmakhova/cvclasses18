@@ -49,6 +49,7 @@ int demo_feature_descriptor(int argc, char* argv[])
         utils::put_number_of_keypoints(frame, corners.size());
 		cv::imshow(demo_wnd, frame);
 
+        // \todo draw histogram of SSD distribution for all descriptors instead of dumping into the file
 		pressed_key = cv::waitKey(30);
         if (pressed_key == ' ') // space
         {

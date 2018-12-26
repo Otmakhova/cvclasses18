@@ -183,6 +183,4 @@ class Stitcher
 };
 } // namespace cvlib
 
-} // namespace cvlib
-
 #endif // __CVLIB_HPP__
